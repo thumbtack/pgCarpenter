@@ -173,17 +173,10 @@ func validateBackupName(args []string) error {
 	// make sure the backup name is valid
 	errorMsg := fmt.Sprintf("backup name ('%s') does not match '%s'", args[0], backupNameRE)
 	if args[0] != latestKey {
-		//re := regexp.MustCompile(backupNameRE)
 		match, err := regexp.MatchString(backupNameRE, args[0])
 		if err != nil || !match {
 			return errors.New(errorMsg)
 		}
-		//match := re.FindAllString(args[0], 0)
-		//
-		//if len(match) != 1 {
-		//	fmt.Println(match)
-		//	return errors.New(errorMsg)
-		//}
 	}
 
 	return nil
