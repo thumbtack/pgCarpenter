@@ -129,7 +129,7 @@ func parseArgs(a *app) func() int {
 	parseCreateBackupArgs(a, createBackupCmd)
 	restoreBackupCmd := parser.NewCommand("restore-backup", "Restore a base backup from S3")
 	parseRestoreBackupArgs(a, restoreBackupCmd)
-	// TODO: archive-wal, fetch-wal, delete-backup
+	// TODO: archive-wal, restore-wal, delete-backup
 
 	// parse input
 	err := parser.Parse(os.Args)
