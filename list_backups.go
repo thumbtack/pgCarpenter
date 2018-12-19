@@ -10,11 +10,6 @@ import (
 	"go.uber.org/zap"
 )
 
-func parseListBackupsArgs(cfg *app, parser *argparse.Command) {
-	// there are no options as of now, we just keep this around for consistency
-	// (and easy maintenance/future-proof?)
-}
-
 func (a *app) listBackups() int {
 	err := a.s3Client.ListObjectsV2Pages(
 		&s3.ListObjectsV2Input{
@@ -90,4 +85,9 @@ func (a *app) handleListBackupsPage(page *s3.ListObjectsV2Output, lastPage bool)
 	}
 
 	return true
+}
+
+func parseListBackupsArgs(cfg *app, parser *argparse.Command) {
+	// there are no options as of now, we just keep this around for consistency
+	// (and easy maintenance/future-proof?)
 }
