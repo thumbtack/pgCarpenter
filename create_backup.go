@@ -247,9 +247,9 @@ func (a *app) ignoreFile(path string) bool {
 	return false
 }
 
+// continuously receive file paths (relative to the data directory) from the filesC channel
+// compress the ones larger than compress-threshold, and upload them to S3 along with some relevant metadata
 func (a *app) backupWorker(filesC <-chan string, wg *sync.WaitGroup) {
-	// continuously receive file paths (relative to the data directory)
-	// from the filesC channel, add them to tar files of up to ~1GB, and upload them
 	defer wg.Done()
 
 	for {
@@ -262,7 +262,8 @@ func (a *app) backupWorker(filesC <-chan string, wg *sync.WaitGroup) {
 		pgFilePath := filepath.Join(*a.pgDataDirectory, pgFile)
 		st, err := os.Stat(pgFilePath)
 		if err != nil {
-			a.logger.Error("Failed to stat file", zap.Error(err))
+			// this can happen for very legitimate reasons, as PG is not stopped and we're taking an online backup
+			a.logger.Info("Failed to stat file. Might have been removed", zap.Error(err))
 			continue
 		}
 
@@ -282,7 +283,7 @@ func (a *app) backupWorker(filesC <-chan string, wg *sync.WaitGroup) {
 			if err != nil {
 				a.logger.Error("Failed to compress file", zap.Error(err))
 				// we use compressed == "" to decide whether to upload and remove a compressed file
-				// let's try to proceed with the backup by uploading the raw file
+				// let's try to proceed with the backup by uploading the uncompressed file
 				compressed = ""
 				continue
 			}
