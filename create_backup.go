@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
@@ -295,7 +294,7 @@ func (a *app) backupWorker(filesC <-chan string, wg *sync.WaitGroup) {
 		if compressed != "" {
 			err = a.upload(compressed, key, st)
 			// cleanup the temporary compressed file
-			a.removeCompressed(compressed)
+			a.mustRemoveFile(compressed)
 		} else {
 			err = a.upload(pgFilePath, key, st)
 		}
@@ -303,46 +302,6 @@ func (a *app) backupWorker(filesC <-chan string, wg *sync.WaitGroup) {
 		if err != nil {
 			a.logger.Fatal("Failed to upload file", zap.Error(err))
 		}
-	}
-}
-
-// TODO: this is shared by archive-wal
-func (a *app) upload(path string, key string, stat os.FileInfo) error {
-	// open the compressed file to upload
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	// read the compressed file into a buffer
-	fileInfo, _ := file.Stat()
-	size := fileInfo.Size()
-	buffer := make([]byte, size)
-	_, err = file.Read(buffer)
-	if err != nil {
-		return err
-	}
-	// prepare the body of the upload
-	body := bytes.NewReader(buffer)
-
-	a.logger.Debug("Uploading file", zap.String("key", key), zap.String("path", path))
-	if size > 5*1024*1024 {
-		_, err = a.s3Uploader.Upload(util.GetUploadInput(a.s3Bucket, &key, body, stat))
-	} else {
-		_, err = a.s3Client.PutObject(util.GetPutObjectInput(a.s3Bucket, &key, body, stat))
-	}
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// TODO: this is used in multiple places
-func (a *app) removeCompressed(path string) {
-	a.logger.Debug("Removing temporary file", zap.String("path", path))
-	if err := os.Remove(path); err != nil {
-		// there's not a lot we can do here
-		a.logger.Error("Failed to remove temporary file", zap.String("path", path), zap.Error(err))
 	}
 }
 

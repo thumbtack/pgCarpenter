@@ -41,7 +41,7 @@ func (a *app) archiveWAL() int {
 		a.logger.Error("Failed to upload WAL segment", zap.Error(err), zap.String("user", u.HomeDir))
 	}
 	// remove the compressed file
-	a.removeCompressed(compressedWal)
+	a.mustRemoveFile(compressedWal)
 
 	a.logger.Debug(
 		"Finished uploading WAL segment",

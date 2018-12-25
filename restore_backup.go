@@ -228,7 +228,7 @@ func (a *app) restoreWorker(restoreFilesC <-chan string, wg *sync.WaitGroup) {
 			if err := util.Decompress(compressed, decompressed); err != nil {
 				a.logger.Error("Failed to decompress file", zap.Error(err))
 			}
-			a.removeCompressed(compressed)
+			a.mustRemoveFile(compressed)
 		}
 
 		// update the last modified time to match the one we just restored
