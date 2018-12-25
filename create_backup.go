@@ -306,11 +306,11 @@ func (a *app) backupWorker(filesC <-chan string, wg *sync.WaitGroup) {
 	}
 }
 
+// TODO: this is shared by archive-wal
 func (a *app) upload(path string, key string, stat os.FileInfo) error {
 	// open the compressed file to upload
 	file, err := os.Open(path)
 	if err != nil {
-		// a.logger.Error("Failed to open file to upload", zap.Error(err))
 		return err
 	}
 	// read the compressed file into a buffer
@@ -337,6 +337,7 @@ func (a *app) upload(path string, key string, stat os.FileInfo) error {
 	return nil
 }
 
+// TODO: this is used in multiple places
 func (a *app) removeCompressed(path string) {
 	a.logger.Debug("Removing temporary file", zap.String("path", path))
 	if err := os.Remove(path); err != nil {

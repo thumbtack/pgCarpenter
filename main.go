@@ -9,6 +9,7 @@ import (
 
 	"github.com/akamensky/argparse"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
@@ -17,31 +18,38 @@ import (
 )
 
 const (
+	walFolder                   = "WAL"
 	successfullyCompletedFolder = "successful"
 	latestKey                   = "LATEST"
 	backupNameRE                = "^[a-zA-Z0-9_-]+$"
 )
 
 type app struct {
-	s3Region          *string
-	s3Bucket          *string
-	s3MaxRetries      *int
-	backupName        *string
-	nWorkers          *int
+	// common
+	s3Region     *string
+	s3Bucket     *string
+	s3MaxRetries *int
+	backupName   *string // TODO: create, restore, delete
+	nWorkers     *int    // TODO: create, restore
+	verbose      *bool
+	// create backup
 	pgUser            *string
 	pgPassword        *string
-	pgDataDirectory   *string
+	pgDataDirectory   *string // TODO: also used by restore
 	backupCheckpoint  *bool
 	backupExclusive   *bool
 	statementTimeout  *int
 	compressThreshold *int
-	modifiedOnly      *bool
 	tmpDirectory      *string
-	verbose           *bool
-	s3Client          *s3.S3
-	s3Uploader        *s3manager.Uploader
-	s3Downloader      *s3manager.Downloader
-	logger            *zap.Logger
+	// restore backup
+	modifiedOnly *bool
+	// archive WAL
+	walPath *string
+	// internal
+	s3Client     *s3.S3
+	s3Uploader   *s3manager.Uploader
+	s3Downloader *s3manager.Downloader
+	logger       *zap.Logger
 }
 
 func initLogging() (*zap.Logger, *zap.AtomicLevel) {
@@ -129,7 +137,9 @@ func parseArgs(a *app) func() int {
 	parseCreateBackupArgs(a, createBackupCmd)
 	restoreBackupCmd := parser.NewCommand("restore-backup", "Restore a base backup from S3")
 	parseRestoreBackupArgs(a, restoreBackupCmd)
-	// TODO: archive-wal, restore-wal, delete-backup
+	archiveWALCmd := parser.NewCommand("archive-wal", "Archive a WAL file (use with restore_command)")
+	parseArchiveWALArgs(a, archiveWALCmd)
+	// TODO: restore-wal, delete-backup
 
 	// parse input
 	err := parser.Parse(os.Args)
@@ -149,6 +159,9 @@ func parseArgs(a *app) func() int {
 	}
 	if restoreBackupCmd.Happened() {
 		return a.restoreBackup
+	}
+	if archiveWALCmd.Happened() {
+		return a.archiveWAL
 	}
 
 	// we should never reach this point, but the compiler needs it
@@ -223,11 +236,15 @@ func main() {
 
 	// create the S3 client before calling the callback
 	cfg.s3Client = s3.New(session.Must(
-		session.NewSession(
-			aws.NewConfig().
-				WithRegion(*cfg.s3Region).
-				WithMaxRetries(*cfg.s3MaxRetries),
-		)))
+		session.NewSessionWithOptions(
+			session.Options{
+				Config: aws.Config{
+					Region:                        cfg.s3Region,
+					MaxRetries:                    cfg.s3MaxRetries,
+					CredentialsChainVerboseErrors: aws.Bool(true)},
+				SharedConfigState:       session.SharedConfigEnable,
+				AssumeRoleTokenProvider: stscreds.StdinTokenProvider,
+			})))
 	// the s3 manager is helpful with large file uploads; also thread-safe
 	cfg.s3Uploader = s3manager.NewUploaderWithClient(cfg.s3Client, func(u *s3manager.Uploader) {
 		u.PartSize = 32 * 1024 * 1024
