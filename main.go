@@ -26,21 +26,21 @@ const (
 
 type app struct {
 	// common
-	s3Region     *string
-	s3Bucket     *string
-	s3MaxRetries *int
-	backupName   *string // TODO: create, restore, delete
-	nWorkers     *int    // TODO: create, restore
-	verbose      *bool
+	s3Region        *string
+	s3Bucket        *string
+	s3MaxRetries    *int
+	backupName      *string // only required by create, restore, and delete
+	pgDataDirectory *string // only required by create and restore
+	nWorkers        *int    // only create and restore can effectively use > 1
+	tmpDirectory    *string
+	verbose         *bool
 	// create backup
 	pgUser            *string
 	pgPassword        *string
-	pgDataDirectory   *string // TODO: also used by restore
 	backupCheckpoint  *bool
 	backupExclusive   *bool
 	statementTimeout  *int
 	compressThreshold *int
-	tmpDirectory      *string
 	// restore backup
 	modifiedOnly *bool
 	// archive WAL
@@ -98,7 +98,8 @@ func parseArgs(a *app) func() int {
 		"",
 		"backup-name",
 		&argparse.Options{
-			Required: len(os.Args) > 1 && (os.Args[1] == "create-backup" || os.Args[1] == "restore-backup"),
+			Required: len(os.Args) > 1 &&
+				(os.Args[1] == "create-backup" || os.Args[1] == "restore-backup" || os.Args[1] == "delete-backup"),
 			Validate: validateBackupName,
 			Help:     "Name of the backup"})
 	a.pgDataDirectory = parser.String(
@@ -121,7 +122,7 @@ func parseArgs(a *app) func() int {
 		&argparse.Options{
 			Required: false,
 			Default:  "/tmp",
-			Help:     "Directory to use for temporary files"})
+			Help:     "Directory to use for creating temporary files"})
 	a.verbose = parser.Flag(
 		"",
 		"verbose",
