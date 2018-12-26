@@ -204,8 +204,8 @@ func (a *app) normalizeDataDirectoryPath() error {
 		return err
 	}
 
-	// for some reason, on some servers, filepath.Walk will not traverse
-	// the directory unless the path ends with a trailing slash
+	// the data directory may be a symlink, in which case filepath.Walk will not traverse
+	// it unless the path ends with a trailing slash
 	if dataDirectory[len(dataDirectory)-1:] != "/" {
 		dataDirectory += "/"
 	}
