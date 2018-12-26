@@ -43,7 +43,11 @@ func (a *app) createBackup() int {
 		a.logger.Error("Failed to start backup", zap.Error(err))
 		return 1
 	}
+
+	// copy all files to S3
 	items := a.uploadFiles()
+
+	// tell PG we're done copying the data directory, save the tablespace map and backup label files
 	if err := a.stopBackup(db); err != nil {
 		a.logger.Error("Failed to stop backup", zap.Error(err))
 		return 1
