@@ -206,8 +206,12 @@ func (a *app) uploadFiles() int {
 		*a.pgDataDirectory,
 		func(path string, info os.FileInfo, err error) error {
 			if err != nil {
-				// nothing else we can do here
-				a.logger.Error("Failed to access file", zap.String("path", path), zap.Error(err))
+				// files might change during the copy process; it's normal during an online backup
+				if os.IsNotExist(err) {
+					a.logger.Debug("Source file vanished", zap.String("path", path), zap.Error(err))
+					return nil
+				}
+				// anything other than the file not existing, on the other hand, is a problem
 				return err
 			}
 			// grab just the path relative to the data directory
