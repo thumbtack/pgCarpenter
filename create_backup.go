@@ -19,7 +19,7 @@ import (
 )
 
 // there's no point on taking backups of directories like pg_xlog
-var prefixesNotToBackup = []string{"/pg_xlog", "/postmaster.pid", "/pg_replslot"}
+var prefixesNotToBackup = []string{"pg_xlog", "postmaster.pid", "pg_replslot"}
 
 func (a *app) createBackup() int {
 	a.logger.Info("Starting backup", zap.String("name", *a.backupName))
