@@ -65,9 +65,7 @@ func (a *app) restoreBackup() int {
 	wg.Wait()
 
 	a.logger.Debug("Creating missing required directories")
-	if err := a.createRequiredDirs(); err != nil {
-		a.logger.Error("Failed to create directory", zap.Error(err))
-	}
+	a.createRequiredDirs()
 
 	a.logger.Info(
 		"Backup successfully restored",
@@ -77,18 +75,19 @@ func (a *app) restoreBackup() int {
 	return 0
 }
 
-func (a *app) createRequiredDirs() error {
+func (a *app) createRequiredDirs() {
 	for _, d := range directoriesThatMustExist {
+		path := filepath.Join(*a.pgDataDirectory, d)
 		// only try to create the directory if one does not already exist
-		_, err := os.Stat(d)
+		_, err := os.Stat(path)
 		if os.IsNotExist(err) {
-			if err := os.Mkdir(filepath.Join(*a.pgDataDirectory, d), 0700); err != nil {
-				return err
+			if err := os.Mkdir(path, 0700); err != nil {
+				// there's no benefit on interrupting the loop and returning an error
+				// might as well just log it and move on to the next directory
+				a.logger.Error("Failed to create directory", zap.Error(err))
 			}
 		}
 	}
-
-	return nil
 }
 
 // get the name of the last successful backup and update the configuration flag
