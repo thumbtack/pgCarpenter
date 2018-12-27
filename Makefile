@@ -3,7 +3,7 @@ root_dir:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 SRC = $(shell find . -name '*.go')
 SRC_TEST = $(shell find . -name '*_test.go')
 
-callme: $(SRC)
+pgCarpenter: $(SRC)
 	go build
 
 .PHONY: fmt
