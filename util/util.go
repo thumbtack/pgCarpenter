@@ -18,12 +18,11 @@ const (
 	// using uppercase first letter because that's how the Go SDK will
 	// deserialize it and the inconsistency would probably throw us off at some point
 	MetadataUploadTime   = "Upload_time"
-	MetadataSize         = "Size"
 	MetadataModifiedTime = "Modified_time"
 )
 
 // return a map with generally useful metadata for Put/Upload operations
-func generateObjectMetadata(info os.FileInfo) map[string]*string {
+func generateObjectMetadata(mtime int64) map[string]*string {
 	now := strconv.FormatInt(time.Now().Unix(), 10)
 
 	metadata := map[string]*string{
@@ -31,9 +30,8 @@ func generateObjectMetadata(info os.FileInfo) map[string]*string {
 	}
 
 	// add file size and modified timestamp, if provided
-	if info != nil {
-		metadata[MetadataSize] = aws.String(strconv.FormatInt(info.Size(), 10))
-		metadata[MetadataModifiedTime] = aws.String(strconv.FormatInt(info.ModTime().Unix(), 10))
+	if mtime != 0 {
+		metadata[MetadataModifiedTime] = aws.String(strconv.FormatInt(mtime, 10))
 	}
 
 	return metadata
@@ -41,23 +39,23 @@ func generateObjectMetadata(info os.FileInfo) map[string]*string {
 
 // GetPutObjectInput creates and returns a pointer to an instance of s3.PutObjectInput that includes
 // the object's metadata as required and used by pgCarpenter.
-func GetPutObjectInput(bucket *string, key *string, body io.ReadSeeker, info os.FileInfo) *s3.PutObjectInput {
+func GetPutObjectInput(bucket *string, key *string, body io.ReadSeeker, mtime int64) *s3.PutObjectInput {
 	return &s3.PutObjectInput{
 		Bucket:   bucket,
 		Key:      key,
 		Body:     body,
-		Metadata: generateObjectMetadata(info),
+		Metadata: generateObjectMetadata(mtime),
 	}
 }
 
 // GetUploadInput creates and returns a pointer to an instance of s3manager.UploadInput that includes
 // the object's metadata as required and used by pgCarpenter
-func GetUploadInput(bucket *string, key *string, body io.Reader, info os.FileInfo) *s3manager.UploadInput {
+func GetUploadInput(bucket *string, key *string, body io.Reader, mtime int64) *s3manager.UploadInput {
 	return &s3manager.UploadInput{
 		Bucket:   bucket,
 		Key:      key,
 		Body:     body,
-		Metadata: generateObjectMetadata(info),
+		Metadata: generateObjectMetadata(mtime),
 	}
 }
 

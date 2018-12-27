@@ -31,7 +31,7 @@ func (a *app) createBackup() int {
 		a.s3Bucket,
 		aws.String((*a.backupName)+"/"),
 		strings.NewReader(""),
-		nil))
+		0))
 	if err != nil {
 		a.logger.Error("Failed to create top-level backup folder", zap.Error(err))
 		return 1
@@ -154,7 +154,7 @@ func (a *app) stopBackup(conn *sql.Conn) error {
 		// upload the second field to a file named backup_label in the root directory of the backup and
 		// the third field to a file named tablespace_map, unless the field is empty
 		key := *a.backupName + "/backup_label"
-		_, err = a.s3Client.PutObject(util.GetPutObjectInput(a.s3Bucket, &key, strings.NewReader(labelFile), nil))
+		_, err = a.s3Client.PutObject(util.GetPutObjectInput(a.s3Bucket, &key, strings.NewReader(labelFile), 0))
 		// _, err = a.s3Uploader.Upload(getUploadInput(a.s3Bucket, &key, strings.NewReader(labelFile)))
 		if err != nil {
 			return err
@@ -163,7 +163,7 @@ func (a *app) stopBackup(conn *sql.Conn) error {
 		if mapFile != "" {
 			key = *a.backupName + "/tablespace_map"
 			// _, err = a.s3Uploader.Upload(getUploadInput(a.s3Bucket, &key, strings.NewReader(mapFile)))
-			_, err = a.s3Client.PutObject(util.GetPutObjectInput(a.s3Bucket, &key, strings.NewReader(mapFile), nil))
+			_, err = a.s3Client.PutObject(util.GetPutObjectInput(a.s3Bucket, &key, strings.NewReader(mapFile), 0))
 			if err != nil {
 				return err
 			}
@@ -175,7 +175,7 @@ func (a *app) stopBackup(conn *sql.Conn) error {
 
 func (a *app) markSuccessful() error {
 	key := filepath.Join(successfullyCompletedFolder, *a.backupName)
-	_, err := a.s3Client.PutObject(util.GetPutObjectInput(a.s3Bucket, &key, strings.NewReader(""), nil))
+	_, err := a.s3Client.PutObject(util.GetPutObjectInput(a.s3Bucket, &key, strings.NewReader(""), 0))
 
 	return err
 }
@@ -185,7 +185,7 @@ func (a *app) updateLatest() error {
 		a.s3Bucket,
 		aws.String(latestKey),
 		strings.NewReader(*a.backupName),
-		nil))
+		0))
 
 	return err
 }
@@ -300,11 +300,11 @@ func (a *app) backupWorker(filesC <-chan string, wg *sync.WaitGroup) {
 		}
 
 		if compressed != "" {
-			err = a.upload(compressed, key, st)
+			err = a.upload(compressed, key, st.ModTime().Unix())
 			// cleanup the temporary compressed file
 			a.mustRemoveFile(compressed)
 		} else {
-			err = a.upload(pgFilePath, key, st)
+			err = a.upload(pgFilePath, key, st.ModTime().Unix())
 		}
 
 		if err != nil {

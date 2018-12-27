@@ -10,7 +10,7 @@ import (
 
 // upload path to the S3 bucket using key as the object name; stat is the FileInfo for the original
 // file being uploaded (path might be a compressed version)
-func (a *app) upload(path string, key string, stat os.FileInfo) error {
+func (a *app) upload(path string, key string, mtime int64) error {
 	// open the compressed file to upload
 	file, err := os.Open(path)
 	if err != nil {
@@ -29,9 +29,9 @@ func (a *app) upload(path string, key string, stat os.FileInfo) error {
 
 	a.logger.Debug("Uploading file", zap.String("key", key), zap.String("path", path))
 	if size > 5*1024*1024 {
-		_, err = a.s3Uploader.Upload(util.GetUploadInput(a.s3Bucket, &key, body, stat))
+		_, err = a.s3Uploader.Upload(util.GetUploadInput(a.s3Bucket, &key, body, mtime))
 	} else {
-		_, err = a.s3Client.PutObject(util.GetPutObjectInput(a.s3Bucket, &key, body, stat))
+		_, err = a.s3Client.PutObject(util.GetPutObjectInput(a.s3Bucket, &key, body, mtime))
 	}
 	if err != nil {
 		return err

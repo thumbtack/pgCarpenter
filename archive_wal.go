@@ -36,7 +36,7 @@ func (a *app) archiveWAL() int {
 		return 1
 	}
 	// upload the compressed file
-	if err := a.upload(compressedWal, key, nil); err != nil {
+	if err := a.upload(compressedWal, key, 0); err != nil {
 		u, _ := user.Current()
 		a.logger.Error("Failed to upload WAL segment", zap.Error(err), zap.String("user", u.HomeDir))
 	}
