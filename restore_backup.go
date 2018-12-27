@@ -115,11 +115,11 @@ func (a *app) resolveLatest() error {
 	return nil
 }
 
-// list all files with a given prefix
+// list all files with a given prefix and add them to the restoreFilexC channel
 func (a *app) listAndRestore(prefix *string, restoreFilesC chan<- string) {
 	a.logger.Debug("Listing folder", zap.String("prefix", *prefix))
 
-	next := ""
+	var next *string = nil
 	for {
 		input := &s3.ListObjectsV2Input{
 			Bucket:    a.s3Bucket,
@@ -127,8 +127,8 @@ func (a *app) listAndRestore(prefix *string, restoreFilesC chan<- string) {
 			Prefix:    prefix,
 		}
 		// include the continuation token, if there's one
-		if next != "" {
-			input.ContinuationToken = aws.String(next)
+		if next != nil {
+			input.ContinuationToken = next
 		}
 		result, err := a.s3Client.ListObjectsV2(input)
 		if err != nil {
@@ -138,19 +138,22 @@ func (a *app) listAndRestore(prefix *string, restoreFilesC chan<- string) {
 		// objects to restore
 		for _, obj := range result.Contents {
 			if *obj.Key != *a.backupName+"/" {
+				a.logger.Debug("Adding object", zap.String("key", *obj.Key))
 				restoreFilesC <- *obj.Key
 			}
 		}
 
 		// child folders to process
-		for _, prefix := range result.CommonPrefixes {
-			a.listAndRestore(prefix.Prefix, restoreFilesC)
+		for _, p := range result.CommonPrefixes {
+			a.logger.Debug("Processing child folder", zap.String("prefix", *p.Prefix))
+			a.listAndRestore(p.Prefix, restoreFilesC)
 		}
 
-		if result.ContinuationToken == nil {
-			break
+		if *result.IsTruncated {
+			next = result.NextContinuationToken
 		} else {
-			next = *result.ContinuationToken
+			a.logger.Debug("Done with prefix", zap.String("prefix", *prefix))
+			return
 		}
 	}
 }
