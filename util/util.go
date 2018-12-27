@@ -39,7 +39,8 @@ func generateObjectMetadata(info os.FileInfo) map[string]*string {
 	return metadata
 }
 
-// create and return a PutObjectInput instance with useful metadata
+// GetPutObjectInput creates and returns a pointer to an instance of s3.PutObjectInput that includes
+// the object's metadata as required and used by pgCarpenter.
 func GetPutObjectInput(bucket *string, key *string, body io.ReadSeeker, info os.FileInfo) *s3.PutObjectInput {
 	return &s3.PutObjectInput{
 		Bucket:   bucket,
@@ -49,6 +50,8 @@ func GetPutObjectInput(bucket *string, key *string, body io.ReadSeeker, info os.
 	}
 }
 
+// GetUploadInput creates and returns a pointer to an instance of s3manager.UploadInput that includes
+// the object's metadata as required and used by pgCarpenter
 func GetUploadInput(bucket *string, key *string, body io.Reader, info os.FileInfo) *s3manager.UploadInput {
 	return &s3manager.UploadInput{
 		Bucket:   bucket,
@@ -58,15 +61,18 @@ func GetUploadInput(bucket *string, key *string, body io.Reader, info os.FileInf
 	}
 }
 
-// return true iff the file is compressed, i.e., the extension indicates it
+// IsCompressed returns true iff the file is compressed, i.e., .lz4 extension
 func IsCompressed(path string) bool {
 	return path[len(path)-len(lz4.Extension):] == lz4.Extension
 }
 
-func Compress(inPath string, tmp string) (string, error) {
+// Compress compresses the file inPath using tmpDir fo storing the compressed output file and
+// any intermediate temporary files it might need to create. It returns the full path to the
+// compressed file, or an error.
+func Compress(inPath string, tmpDir string) (string, error) {
 	// create a temporary file with a unique name compress it -- multiple files
 	// are named 000: pg_notify/0000, pg_subtrans/0000
-	outFile, err := ioutil.TempFile(tmp, "pgCarpenter.")
+	outFile, err := ioutil.TempFile(tmpDir, "pgCarpenter.")
 	if err != nil {
 		return "", err
 	}
@@ -116,6 +122,7 @@ func Compress(inPath string, tmp string) (string, error) {
 	return outFile.Name(), nil
 }
 
+// Decompress decompresses the file inPath to outPath.
 func Decompress(inPath string, outPath string) error {
 	// open the input, compressed file
 	inFile, err := os.Open(inPath)
