@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/akamensky/argparse"
-	"github.com/aws/aws-sdk-go/aws"
 	_ "github.com/lib/pq"
 	"github.com/marcoalmeida/pgCarpenter/util"
 	"github.com/pierrec/lz4"
@@ -27,11 +26,7 @@ func (a *app) createBackup() int {
 
 	// create the top level "folder" so that the object actually exists and
 	// has all the relevant metadata like timestamps
-	_, err := a.s3Client.PutObject(util.GetPutObjectInput(
-		a.s3Bucket,
-		aws.String((*a.backupName)+"/"),
-		strings.NewReader(""),
-		0))
+	err := a.storage.PutString(*a.backupName+"/", "")
 	if err != nil {
 		a.logger.Error("Failed to create top-level backup folder", zap.Error(err))
 		return 1
@@ -154,16 +149,14 @@ func (a *app) stopBackup(conn *sql.Conn) error {
 		// upload the second field to a file named backup_label in the root directory of the backup and
 		// the third field to a file named tablespace_map, unless the field is empty
 		key := *a.backupName + "/backup_label"
-		_, err = a.s3Client.PutObject(util.GetPutObjectInput(a.s3Bucket, &key, strings.NewReader(labelFile), 0))
-		// _, err = a.s3Uploader.Upload(getUploadInput(a.s3Bucket, &key, strings.NewReader(labelFile)))
+		err = a.storage.PutString(key, labelFile)
 		if err != nil {
 			return err
 		}
 
 		if mapFile != "" {
 			key = *a.backupName + "/tablespace_map"
-			// _, err = a.s3Uploader.Upload(getUploadInput(a.s3Bucket, &key, strings.NewReader(mapFile)))
-			_, err = a.s3Client.PutObject(util.GetPutObjectInput(a.s3Bucket, &key, strings.NewReader(mapFile), 0))
+			err = a.storage.PutString(key, mapFile)
 			if err != nil {
 				return err
 			}
@@ -175,19 +168,13 @@ func (a *app) stopBackup(conn *sql.Conn) error {
 
 func (a *app) markSuccessful() error {
 	key := filepath.Join(successfullyCompletedFolder, *a.backupName)
-	_, err := a.s3Client.PutObject(util.GetPutObjectInput(a.s3Bucket, &key, strings.NewReader(""), 0))
+	err := a.storage.PutString(key, "")
 
 	return err
 }
 
 func (a *app) updateLatest() error {
-	_, err := a.s3Client.PutObject(util.GetPutObjectInput(
-		a.s3Bucket,
-		aws.String(latestKey),
-		strings.NewReader(*a.backupName),
-		0))
-
-	return err
+	return a.storage.PutString(latestKey, *a.backupName)
 }
 
 // upload the data directory to S3; return the number of files uploaded
@@ -300,11 +287,11 @@ func (a *app) backupWorker(filesC <-chan string, wg *sync.WaitGroup) {
 		}
 
 		if compressed != "" {
-			err = a.upload(compressed, key, st.ModTime().Unix())
+			err = a.storage.Put(key, compressed, st.ModTime().Unix())
 			// cleanup the temporary compressed file
-			a.mustRemoveFile(compressed)
+			util.MustRemoveFile(compressed, a.logger)
 		} else {
-			err = a.upload(pgFilePath, key, st.ModTime().Unix())
+			err = a.storage.Put(key, pgFilePath, st.ModTime().Unix())
 		}
 
 		if err != nil {

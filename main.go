@@ -8,11 +8,8 @@ import (
 	"regexp"
 
 	"github.com/akamensky/argparse"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/marcoalmeida/pgCarpenter/storage"
+	"github.com/marcoalmeida/pgCarpenter/storage/s3storage"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -32,24 +29,21 @@ type app struct {
 	backupName      *string // only required by create, restore, and delete
 	pgDataDirectory *string // only required by create and restore
 	nWorkers        *int    // only create and restore can effectively use > 1
+	walPath         *string // only required by archive-wal and restore-wal
 	tmpDirectory    *string
 	verbose         *bool
-	// create backup
+	// set on create_backup.go
 	pgUser            *string
 	pgPassword        *string
 	backupCheckpoint  *bool
 	backupExclusive   *bool
 	statementTimeout  *int
 	compressThreshold *int
-	// restore backup
+	// set on restore_backup.go
 	modifiedOnly *bool
-	// archive WAL
-	walPath *string
 	// internal
-	s3Client     *s3.S3
-	s3Uploader   *s3manager.Uploader
-	s3Downloader *s3manager.Downloader
-	logger       *zap.Logger
+	storage storage.Storage
+	logger  *zap.Logger
 }
 
 func initLogging() (*zap.Logger, *zap.AtomicLevel) {
@@ -130,6 +124,13 @@ func parseArgs(a *app) func() int {
 			Required: false,
 			Default:  false,
 			Help:     "Verbose output"})
+	// archive WAL + rstore WAL
+	a.walPath = parser.String(
+		"",
+		"wal-path",
+		&argparse.Options{
+			Required: len(os.Args) > 1 && (os.Args[1] == "archive-wal" || os.Args[1] == "restore-wal"),
+			Help:     "Path to the WAL file"})
 
 	// subcommands
 	listBackupsCmd := parser.NewCommand("list-backups", "List all available backups")
@@ -138,9 +139,11 @@ func parseArgs(a *app) func() int {
 	parseCreateBackupArgs(a, createBackupCmd)
 	restoreBackupCmd := parser.NewCommand("restore-backup", "Restore a base backup from S3")
 	parseRestoreBackupArgs(a, restoreBackupCmd)
-	archiveWALCmd := parser.NewCommand("archive-wal", "Archive a WAL file (use with restore_command)")
+	archiveWALCmd := parser.NewCommand("archive-wal", "Archive a WAL segment (use with archive_command)")
 	parseArchiveWALArgs(a, archiveWALCmd)
-	// TODO: restore-wal, delete-backup
+	restoreWALCmd := parser.NewCommand("restore-wal", "Restore a WAL segment (use with restore_command)")
+	parseRestoreWALArgs(a, restoreWALCmd)
+	// TODO: delete-backup
 
 	// parse input
 	err := parser.Parse(os.Args)
@@ -163,6 +166,9 @@ func parseArgs(a *app) func() int {
 	}
 	if archiveWALCmd.Happened() {
 		return a.archiveWAL
+	}
+	if restoreWALCmd.Happened() {
+		return a.restoreWAL
 	}
 
 	// we should never reach this point, but the compiler needs it
@@ -235,27 +241,8 @@ func main() {
 		atom.SetLevel(zap.DebugLevel)
 	}
 
-	// create the S3 client before calling the callback
-	cfg.s3Client = s3.New(session.Must(
-		session.NewSessionWithOptions(
-			session.Options{
-				Config: aws.Config{
-					Region:                        cfg.s3Region,
-					MaxRetries:                    cfg.s3MaxRetries,
-					CredentialsChainVerboseErrors: aws.Bool(true)},
-				SharedConfigState:       session.SharedConfigEnable,
-				AssumeRoleTokenProvider: stscreds.StdinTokenProvider,
-			})))
-	// the s3 manager is helpful with large file uploads; also thread-safe
-	cfg.s3Uploader = s3manager.NewUploaderWithClient(cfg.s3Client, func(u *s3manager.Uploader) {
-		u.PartSize = 32 * 1024 * 1024
-		u.Concurrency = 32
-		u.LeavePartsOnError = false
-	})
-	cfg.s3Downloader = s3manager.NewDownloaderWithClient(cfg.s3Client, func(u *s3manager.Downloader) {
-		u.PartSize = 32 * 1024 * 1024
-		u.Concurrency = 32
-	})
+	// as of now the only supported storage backend is S3
+	cfg.storage = s3storage.New(*cfg.s3Bucket, *cfg.s3Region, *cfg.s3MaxRetries, cfg.logger)
 
 	// make sure we're using the absolute path to the data directory before starting
 	if err := cfg.normalizeDataDirectoryPath(); err != nil {

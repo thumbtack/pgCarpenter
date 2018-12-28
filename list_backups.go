@@ -3,64 +3,54 @@ package main
 import (
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/akamensky/argparse"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"go.uber.org/zap"
 )
 
 func (a *app) listBackups() int {
-	err := a.s3Client.ListObjectsV2Pages(
-		&s3.ListObjectsV2Input{
-			Bucket:    a.s3Bucket,
-			Delimiter: aws.String("/"),
-		},
-		a.handleListBackupsPage)
-	if err != nil {
-		a.logger.Error("Failed to list S3 objects", zap.Error(err))
-	}
-
-	return 0
-}
-
-func (a *app) handleListBackupsPage(page *s3.ListObjectsV2Output, lastPage bool) bool {
 	type backupEntry struct {
 		name       string
-		timestamp  string
+		timestamp  int64
 		successful bool
 	}
 
-	format := "%-24s%-34s%s"
+	format := "%-34s%-28s%s"
 	backups := make([]backupEntry, 0)
 
-	for _, prefix := range page.CommonPrefixes {
+	// fetch all keys at the root of the bucket
+	keys, err := a.storage.ListFolder("")
+	if err != nil {
+		a.logger.Error("Failed to list backups", zap.Error(err))
+	}
+
+	for _, k := range keys {
 		// remove the trailing slash from the backup's name
-		n := len(*prefix.Prefix)
-		backupName := (*prefix.Prefix)[:n-1]
-		// ignore the folder used to mark successful backups
-		if backupName == successfullyCompletedFolder {
+		backupName := k[:len(k)-1]
+		// ignore the folder used to mark successful backups and the one we keep WAL segments in
+		if backupName == successfullyCompletedFolder || backupName == walFolder {
 			continue
 		}
 
-		bkp := backupEntry{name: backupName, timestamp: ""}
+		bkp := backupEntry{name: backupName, timestamp: 0}
 		// try to get the object's last modified timestamp
-		result, err := a.s3Client.GetObject(&s3.GetObjectInput{
-			Bucket: a.s3Bucket,
-			Key:    prefix.Prefix,
-		})
+		mtime, err := a.storage.GetLastModifiedTime(k)
 		if err == nil {
-			bkp.timestamp = result.LastModified.String()
+			bkp.timestamp = mtime
 		}
 
 		// was this backup successfully completed?
-		_, err = a.s3Client.GetObject(&s3.GetObjectInput{
-			Bucket: a.s3Bucket,
-			Key:    aws.String(successfullyCompletedFolder + "/" + backupName),
-		})
+		_, err = a.storage.GetString(successfullyCompletedFolder + "/" + backupName)
 		bkp.successful = err == nil
 
 		backups = append(backups, bkp)
+	}
+
+	// try to get the name of the latest backup
+	latest, err := a.storage.GetString(latestKey)
+	if err != nil {
+		latest = ""
 	}
 
 	// sort by timestamp asc
@@ -70,21 +60,30 @@ func (a *app) handleListBackupsPage(page *s3.ListObjectsV2Output, lastPage bool)
 
 	// formatted output
 	fmt.Printf(format, "Name", "Created", "\n")
-
-	for i, b := range backups {
-		status := ""
-		if !b.successful {
-			status = "(incomplete!) "
-		}
-		fmt.Printf(format, b.name, b.timestamp, status)
+	for _, b := range backups {
+		fmt.Printf(format, b.name, formatTime(b.timestamp), formatStatus(b.successful))
 		endLine := ""
-		if i == len(backups)-1 {
+		if b.name == latest {
 			endLine = "(LATEST)"
 		}
 		fmt.Println(endLine)
 	}
 
-	return true
+	return 0
+}
+
+func formatTime(mtime int64) string {
+	t := time.Unix(mtime, 0)
+
+	return t.Format(time.RFC3339)
+}
+
+func formatStatus(success bool) string {
+	if !success {
+		return "(incomplete!) "
+	}
+
+	return ""
 }
 
 func parseListBackupsArgs(cfg *app, parser *argparse.Command) {

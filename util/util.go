@@ -5,57 +5,17 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"strconv"
-	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/pierrec/lz4"
+	"go.uber.org/zap"
 )
 
-const (
-	// using uppercase first letter because that's how the Go SDK will
-	// deserialize it and the inconsistency would probably throw us off at some point
-	MetadataUploadTime   = "Upload_time"
-	MetadataModifiedTime = "Modified_time"
-)
-
-// return a map with generally useful metadata for Put/Upload operations
-func generateObjectMetadata(mtime int64) map[string]*string {
-	now := strconv.FormatInt(time.Now().Unix(), 10)
-
-	metadata := map[string]*string{
-		MetadataUploadTime: aws.String(now),
-	}
-
-	// add file size and modified timestamp, if provided
-	if mtime != 0 {
-		metadata[MetadataModifiedTime] = aws.String(strconv.FormatInt(mtime, 10))
-	}
-
-	return metadata
-}
-
-// GetPutObjectInput creates and returns a pointer to an instance of s3.PutObjectInput that includes
-// the object's metadata as required and used by pgCarpenter.
-func GetPutObjectInput(bucket *string, key *string, body io.ReadSeeker, mtime int64) *s3.PutObjectInput {
-	return &s3.PutObjectInput{
-		Bucket:   bucket,
-		Key:      key,
-		Body:     body,
-		Metadata: generateObjectMetadata(mtime),
-	}
-}
-
-// GetUploadInput creates and returns a pointer to an instance of s3manager.UploadInput that includes
-// the object's metadata as required and used by pgCarpenter
-func GetUploadInput(bucket *string, key *string, body io.Reader, mtime int64) *s3manager.UploadInput {
-	return &s3manager.UploadInput{
-		Bucket:   bucket,
-		Key:      key,
-		Body:     body,
-		Metadata: generateObjectMetadata(mtime),
+// MustRemoveFile tries to delete the file path from the local file system. On error a message is logged.
+func MustRemoveFile(path string, logger *zap.Logger) {
+	logger.Debug("Removing file", zap.String("path", path))
+	if err := os.Remove(path); err != nil {
+		// there's not a lot we can do here
+		logger.Error("Failed to remove file", zap.String("path", path), zap.Error(err))
 	}
 }
 

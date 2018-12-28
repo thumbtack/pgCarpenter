@@ -1,18 +1,13 @@
 package main
 
 import (
-	"bytes"
-	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/akamensky/argparse"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/marcoalmeida/pgCarpenter/util"
 	"github.com/pierrec/lz4"
 	"go.uber.org/zap"
@@ -57,7 +52,10 @@ func (a *app) restoreBackup() int {
 	}
 
 	// kick off the (recursive) listing of all folders and restoring of each file
-	a.listAndRestore(a.backupName, restoreFilesC)
+	if err := a.storage.WalkFolder(*a.backupName+"/", restoreFilesC); err != nil {
+		a.logger.Error("Failed to traverse backup folder", zap.Error(err))
+		return 1
+	}
 
 	// wait for all workers to finish restoring the data files
 	a.logger.Info("Waiting for all workers to finish")
@@ -92,69 +90,15 @@ func (a *app) createRequiredDirs() {
 
 // get the name of the last successful backup and update the configuration flag
 func (a *app) resolveLatest() error {
-	result, err := a.s3Client.GetObject(&s3.GetObjectInput{
-		Bucket: a.s3Bucket,
-		Key:    aws.String(latestKey),
-	})
+	latest, err := a.storage.GetString(latestKey)
 	if err != nil {
 		return err
 	}
 
-	defer result.Body.Close()
-
-	// read the file
-	buf := bytes.NewBuffer(nil)
-	if _, err := io.Copy(buf, result.Body); err != nil {
-		return err
-	}
-
 	// update the backup name
-	*a.backupName = buf.String()
+	*a.backupName = latest
 
 	return nil
-}
-
-// list all files with a given prefix and add them to the restoreFilexC channel
-func (a *app) listAndRestore(prefix *string, restoreFilesC chan<- string) {
-	a.logger.Debug("Listing folder", zap.String("prefix", *prefix))
-
-	var next *string = nil
-	for {
-		input := &s3.ListObjectsV2Input{
-			Bucket:    a.s3Bucket,
-			Delimiter: aws.String("/"),
-			Prefix:    prefix,
-		}
-		// include the continuation token, if there's one
-		if next != nil {
-			input.ContinuationToken = next
-		}
-		result, err := a.s3Client.ListObjectsV2(input)
-		if err != nil {
-			a.logger.Fatal("Failed to list S3 folder", zap.Error(err))
-		}
-
-		// objects to restore
-		for _, obj := range result.Contents {
-			if *obj.Key != *a.backupName+"/" {
-				a.logger.Debug("Adding object", zap.String("key", *obj.Key))
-				restoreFilesC <- *obj.Key
-			}
-		}
-
-		// child folders to process
-		for _, p := range result.CommonPrefixes {
-			a.logger.Debug("Processing child folder", zap.String("prefix", *p.Prefix))
-			a.listAndRestore(p.Prefix, restoreFilesC)
-		}
-
-		if *result.IsTruncated {
-			next = result.NextContinuationToken
-		} else {
-			a.logger.Debug("Done with prefix", zap.String("prefix", *prefix))
-			return
-		}
-	}
 }
 
 func (a *app) restoreWorker(restoreFilesC <-chan string, wg *sync.WaitGroup) {
@@ -171,19 +115,24 @@ func (a *app) restoreWorker(restoreFilesC <-chan string, wg *sync.WaitGroup) {
 
 		a.logger.Debug("Processing file", zap.String("remote", key))
 
-		// drop the backup name from the key to get the path (relative to the data directory)
-		dst := filepath.Join(*a.pgDataDirectory, strings.TrimPrefix(key, *a.backupName+"/"))
+		// drop the backup name from the key to get the path relative to the data directory
+		file := strings.TrimPrefix(key, *a.backupName+"/")
+		dst := filepath.Join(*a.pgDataDirectory, file)
 
 		// get the modify time stored in the object's metadata
-		mtime := a.getMTime(key)
+		mtime, err := a.storage.GetLastModifiedTime(key)
 		// skip this file if the modify timestamp stored in the key's metadata matches the local version
-		if *a.modifiedOnly && mtime != 0 {
-			// the key on S3 may be of a compressed file in which case it'll include
-			// an extension that the local file does not have
-			local := strings.TrimSuffix(dst, lz4.Extension)
-			if a.fileHasNotChanged(local, mtime) {
-				a.logger.Debug("Skipping unmodified file", zap.String("remote", key))
-				continue
+		if *a.modifiedOnly {
+			if err != nil {
+				a.logger.Error("Failed to get mtime", zap.Error(err), zap.String("key", key))
+			} else {
+				// the key may be of a compressed file in which case it'll include
+				// an extension that the local file does not have
+				local := strings.TrimSuffix(dst, lz4.Extension)
+				if a.fileHasNotChanged(local, mtime) {
+					a.logger.Debug("Skipping unmodified file", zap.String("remote", key))
+					continue
+				}
 			}
 		}
 
@@ -200,18 +149,14 @@ func (a *app) restoreWorker(restoreFilesC <-chan string, wg *sync.WaitGroup) {
 		out, err := os.Create(dst)
 		if err != nil {
 			a.logger.Error("Failed to create file", zap.Error(err))
+			// no point on trying to continue
+			return
 		}
 		// download contents
-		_, err = a.s3Downloader.Download(
-			out,
-			&s3.GetObjectInput{
-				Bucket: a.s3Bucket,
-				Key:    aws.String(key),
-			})
+		err = a.storage.Get(key, out)
 		if err != nil {
 			a.logger.Error("Failed to download file", zap.Error(err))
 		}
-
 		// close the file
 		if err := out.Close(); err != nil {
 			a.logger.Error("Failed to close file", zap.Error(err))
@@ -230,7 +175,7 @@ func (a *app) restoreWorker(restoreFilesC <-chan string, wg *sync.WaitGroup) {
 			if err := util.Decompress(compressed, decompressed); err != nil {
 				a.logger.Error("Failed to decompress file", zap.Error(err))
 			}
-			a.mustRemoveFile(compressed)
+			util.MustRemoveFile(compressed, a.logger)
 		}
 
 		// update the last modified time to match the one we just restored
@@ -254,31 +199,6 @@ func (a *app) fileHasNotChanged(localFile string, mtime int64) bool {
 	}
 
 	return mtime == st.ModTime().Unix()
-}
-
-// return the modify timestamp stored in the objects metadata, or "" if it's not there
-func (a *app) getMTime(key string) int64 {
-	result, err := a.s3Client.HeadObject(&s3.HeadObjectInput{
-		Bucket: a.s3Bucket,
-		Key:    aws.String(key),
-	})
-	if err != nil {
-		a.logger.Error("Failed to HEAD object", zap.Error(err))
-		return 0
-	}
-
-	mtime, ok := result.Metadata[util.MetadataModifiedTime]
-	if ok {
-		mtime, err := strconv.Atoi(*mtime)
-		if err != nil {
-			a.logger.Error("Failed to HEAD object", zap.Error(err))
-			return 0
-		}
-
-		return int64(mtime)
-	}
-
-	return 0
 }
 
 func parseRestoreBackupArgs(cfg *app, parser *argparse.Command) {

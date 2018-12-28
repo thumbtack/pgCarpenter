@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"os/user"
 	"path/filepath"
 	"time"
 
@@ -36,12 +35,11 @@ func (a *app) archiveWAL() int {
 		return 1
 	}
 	// upload the compressed file
-	if err := a.upload(compressedWal, key, 0); err != nil {
-		u, _ := user.Current()
-		a.logger.Error("Failed to upload WAL segment", zap.Error(err), zap.String("user", u.HomeDir))
+	if err := a.storage.Put(key, compressedWal, 0); err != nil {
+		a.logger.Error("Failed to upload WAL segment", zap.Error(err))
 	}
 	// remove the compressed file
-	a.mustRemoveFile(compressedWal)
+	util.MustRemoveFile(compressedWal, a.logger)
 
 	a.logger.Debug(
 		"Finished uploading WAL segment",
@@ -52,10 +50,6 @@ func (a *app) archiveWAL() int {
 }
 
 func parseArchiveWALArgs(cfg *app, parser *argparse.Command) {
-	cfg.walPath = parser.String(
-		"",
-		"wal-path",
-		&argparse.Options{
-			Required: true,
-			Help:     "Path to the WAL file to archive"})
+	// there are no options as of now, we just keep this around for consistency
+	// (and easy maintenance/future-proof?)
 }
