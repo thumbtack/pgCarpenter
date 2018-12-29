@@ -31,10 +31,13 @@ func (a *app) restoreBackup() int {
 
 	// if requested, find the name of the latest backup and update the app struct
 	if *a.backupName == latestKey {
-		if err := a.resolveLatest(); err != nil {
+		latest, err := a.resolveLatest()
+		if err != nil {
 			a.logger.Error("Failed to resolve the name of the backup for "+latestKey, zap.Error(err))
 			return 1
 		}
+		// update the field with the backup name we'll be using everywhere
+		*a.backupName = latest
 	}
 
 	a.logger.Info("Starting to restore backup", zap.String("name", *a.backupName))
@@ -90,16 +93,13 @@ func (a *app) createRequiredDirs() {
 }
 
 // get the name of the last successful backup and update the configuration flag
-func (a *app) resolveLatest() error {
+func (a *app) resolveLatest() (string, error) {
 	latest, err := a.storage.GetString(latestKey)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	// update the backup name
-	*a.backupName = latest
-
-	return nil
+	return latest, nil
 }
 
 func (a *app) restoreWorker(restoreFilesC <-chan string, wg *sync.WaitGroup) {

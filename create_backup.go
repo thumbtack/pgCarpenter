@@ -62,7 +62,7 @@ func (a *app) createBackup() int {
 	}
 
 	// update the LATEST marker
-	if err := a.updateLatest(); err != nil {
+	if err := a.updateLatest(*a.backupName); err != nil {
 		a.logger.Error("Failed to update the LATEST marker", zap.Error(err))
 		return 1
 	}
@@ -193,8 +193,8 @@ func (a *app) deleteSuccessfulMarker(backupName string) error {
 	return nil
 }
 
-func (a *app) updateLatest() error {
-	return a.storage.PutString(latestKey, *a.backupName)
+func (a *app) updateLatest(backupName string) error {
+	return a.storage.PutString(latestKey, backupName)
 }
 
 // upload the data directory to S3; return the number of files uploaded
