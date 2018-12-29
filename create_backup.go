@@ -57,7 +57,7 @@ func (a *app) createBackup() int {
 	}
 
 	// mark the backup as successful
-	if err := a.putSuccessfulMarker(); err != nil {
+	if err := a.putSuccessfulMarker(*a.backupName); err != nil {
 		a.logger.Error("Failed to mark backup as successfully completed", zap.Error(err))
 	}
 
@@ -173,16 +173,16 @@ func (a *app) stopBackup(conn *sql.Conn) error {
 	return nil
 }
 
-func (a *app) getSuccessfulMarker() string {
-	return filepath.Join(successfullyCompletedFolder, *a.backupName)
+func (a *app) getSuccessfulMarker(backupName string) string {
+	return filepath.Join(successfullyCompletedFolder, backupName)
 }
 
-func (a *app) putSuccessfulMarker() error {
-	return a.storage.PutString(a.getSuccessfulMarker(), "")
+func (a *app) putSuccessfulMarker(backupName string) error {
+	return a.storage.PutString(a.getSuccessfulMarker(backupName), "")
 }
 
-func (a *app) deleteSuccessfulMarker() error {
-	key := a.getSuccessfulMarker()
+func (a *app) deleteSuccessfulMarker(backupName string) error {
+	key := a.getSuccessfulMarker(backupName)
 	_, err := a.storage.GetString(key)
 	if err == nil {
 		if err := a.storage.Delete(key); err != nil {
