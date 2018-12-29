@@ -14,7 +14,7 @@ import (
 func (a *app) archiveWAL() int {
 	begin := time.Now()
 	a.logger.Debug(
-		"Starting upload of WAL segment",
+		"Starting to archive of WAL segment",
 		zap.String("WAL", *a.walPath))
 
 	// the path name PG passes along for the WAL segment is relative to the current working directory
@@ -42,7 +42,7 @@ func (a *app) archiveWAL() int {
 	util.MustRemoveFile(compressedWal, a.logger)
 
 	a.logger.Debug(
-		"Finished uploading WAL segment",
+		"Finished archiving WAL segment",
 		zap.String("WAL", *a.walPath),
 		zap.Duration("duration", time.Now().Sub(begin)))
 
