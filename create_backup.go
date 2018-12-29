@@ -24,10 +24,18 @@ func (a *app) createBackup() int {
 	a.logger.Info("Starting backup", zap.String("name", *a.backupName))
 	begin := time.Now()
 
+	backupKey := *a.backupName + "/"
+
+	// don't allow existing backups to be overwritten
+	_, err := a.storage.GetString(backupKey)
+	if err == nil {
+		a.logger.Error("A backup with the same name already exists", zap.String("backup_name", *a.backupName))
+		return 1
+	}
+
 	// create the top level "folder" so that the object actually exists and
 	// has all the relevant metadata like timestamps
-	err := a.storage.PutString(*a.backupName+"/", "")
-	if err != nil {
+	if err := a.storage.PutString(backupKey, ""); err != nil {
 		a.logger.Error("Failed to create top-level backup folder", zap.Error(err))
 		return 1
 	}
@@ -49,9 +57,8 @@ func (a *app) createBackup() int {
 	}
 
 	// mark the backup as successful
-	if err := a.markSuccessful(); err != nil {
+	if err := a.putSuccessfulMarker(); err != nil {
 		a.logger.Error("Failed to mark backup as successfully completed", zap.Error(err))
-		return 1
 	}
 
 	// update the LATEST marker
@@ -166,11 +173,24 @@ func (a *app) stopBackup(conn *sql.Conn) error {
 	return nil
 }
 
-func (a *app) markSuccessful() error {
-	key := filepath.Join(successfullyCompletedFolder, *a.backupName)
-	err := a.storage.PutString(key, "")
+func (a *app) getSuccessfulMarker() string {
+	return filepath.Join(successfullyCompletedFolder, *a.backupName)
+}
 
-	return err
+func (a *app) putSuccessfulMarker() error {
+	return a.storage.PutString(a.getSuccessfulMarker(), "")
+}
+
+func (a *app) deleteSuccessfulMarker() error {
+	key := a.getSuccessfulMarker()
+	_, err := a.storage.GetString(key)
+	if err == nil {
+		if err := a.storage.Delete(key); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (a *app) updateLatest() error {
