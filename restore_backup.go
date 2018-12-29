@@ -20,7 +20,7 @@ func (a *app) restoreBackup() int {
 	// create a channel for distributing work
 	// spawn nWorkers
 	// list all files in backupName, and for each file:
-	//   put full path to the S3 object in the channel
+	//   put full path to the remote storage object in the channel
 	// workers:
 	//   download the file to a.pgDataDirectory keeping the relative path
 	//   e.g., s3://backupName/base/3456.gz --> a.pgDataDirectory/base/3456.gz
@@ -163,7 +163,7 @@ func (a *app) restoreWorker(restoreFilesC <-chan string, wg *sync.WaitGroup) {
 			a.logger.Error("Failed to close file", zap.Error(err))
 		}
 
-		// if what we got from S3 is a compressed file, decompress it and remove the compressed one
+		// if the object we got is a compressed file, decompress it and remove the compressed one
 		localFile := out.Name()
 		if util.IsCompressed(key) {
 			compressed := out.Name()

@@ -25,7 +25,7 @@ func (a *app) archiveWAL() int {
 	}
 	// full path to the WAL segment
 	walFullPath := filepath.Join(cwd, *a.walPath)
-	// S3 key from the filename + LZ4 extension
+	// create the object's key from the filename + LZ4 extension
 	key := filepath.Join(walFolder, filepath.Base(walFullPath)+lz4.Extension)
 	// compress the WAL segment -- on a random sample of 256 WAL segments the file size was reduced to ~4.5MB, i.e.,
 	// ~27% the original size (16MB)

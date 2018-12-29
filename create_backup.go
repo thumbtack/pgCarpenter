@@ -47,7 +47,7 @@ func (a *app) createBackup() int {
 		return 1
 	}
 
-	// copy all files to S3
+	// copy all files to remote storage
 	items := a.uploadFiles()
 
 	// tell PG we're done copying the data directory, save the tablespace map and backup label files
@@ -197,7 +197,7 @@ func (a *app) updateLatest(backupName string) error {
 	return a.storage.PutString(latestKey, backupName)
 }
 
-// upload the data directory to S3; return the number of files uploaded
+// upload the data directory to remote storage; return the number of files uploaded
 func (a *app) uploadFiles() int {
 	// channel to keep the path of all files that need to compressed and uploaded
 	filesC := make(chan string)
@@ -262,7 +262,7 @@ func (a *app) ignoreFile(path string) bool {
 }
 
 // continuously receive file paths (relative to the data directory) from the filesC channel
-// compress the ones larger than compress-threshold, and upload them to S3 along with some relevant metadata
+// compress the ones larger than compress-threshold, and upload them to remote storage along with some relevant metadata
 func (a *app) backupWorker(filesC <-chan string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
@@ -287,7 +287,7 @@ func (a *app) backupWorker(filesC <-chan string, wg *sync.WaitGroup) {
 			continue
 		}
 
-		// name the S3 object after the file path relative to the data directory
+		// name the object after the file path relative to the data directory
 		key := filepath.Join(*a.backupName, pgFile)
 		// compress files larger than a given threshold
 		compressed := ""
