@@ -28,7 +28,7 @@ type app struct {
 	s3MaxRetries    *int
 	backupName      *string // only required by create, restore, and delete
 	pgDataDirectory *string // only required by create and restore
-	nWorkers        *int    // only create and restore can effectively use > 1
+	nWorkers        *int    // only create, restore, and delete can effectively use > 1
 	walPath         *string // only required by archive-wal and restore-wal
 	tmpDirectory    *string
 	verbose         *bool
@@ -135,15 +135,16 @@ func parseArgs(a *app) func() int {
 	// subcommands
 	listBackupsCmd := parser.NewCommand("list-backups", "List all available backups")
 	parseListBackupsArgs(a, listBackupsCmd)
-	createBackupCmd := parser.NewCommand("create-backup", "Create a new base backup storing it on S3")
+	createBackupCmd := parser.NewCommand("create-backup", "Create a new base backup")
 	parseCreateBackupArgs(a, createBackupCmd)
-	restoreBackupCmd := parser.NewCommand("restore-backup", "Restore a base backup from S3")
+	restoreBackupCmd := parser.NewCommand("restore-backup", "Restore a base backup")
 	parseRestoreBackupArgs(a, restoreBackupCmd)
 	archiveWALCmd := parser.NewCommand("archive-wal", "Archive a WAL segment (use with archive_command)")
 	parseArchiveWALArgs(a, archiveWALCmd)
 	restoreWALCmd := parser.NewCommand("restore-wal", "Restore a WAL segment (use with restore_command)")
 	parseRestoreWALArgs(a, restoreWALCmd)
-	// TODO: delete-backup
+	deleteBackupCmd := parser.NewCommand("delete-backup", "Delete a base backup")
+	parseDeleteBackupArgs(a, deleteBackupCmd)
 
 	// parse input
 	err := parser.Parse(os.Args)
@@ -169,6 +170,9 @@ func parseArgs(a *app) func() int {
 	}
 	if restoreWALCmd.Happened() {
 		return a.restoreWAL
+	}
+	if deleteBackupCmd.Happened() {
+		return a.DeleteBackup
 	}
 
 	// we should never reach this point, but the compiler needs it

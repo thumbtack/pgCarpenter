@@ -51,13 +51,14 @@ func (a *app) restoreBackup() int {
 		go a.restoreWorker(restoreFilesC, wg)
 	}
 
-	// kick off the (recursive) listing of all folders and restoring of each file
+	// kick off the (recursive) listing of all objects and put them in the restoreFilesC channel
+	// so that the workers can restore the files
 	if err := a.storage.WalkFolder(*a.backupName+"/", restoreFilesC); err != nil {
 		a.logger.Error("Failed to traverse backup folder", zap.Error(err))
 		return 1
 	}
 
-	// wait for all workers to finish restoring the data files
+	// close the channel to signal there are no more items and wait for all workers to finish
 	a.logger.Info("Waiting for all workers to finish")
 	close(restoreFilesC)
 	wg.Wait()

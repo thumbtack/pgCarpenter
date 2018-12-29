@@ -21,4 +21,6 @@ type Storage interface {
 	// WalkFolder traverses the folder rooted at path, putting each object it finds in the channel keysC.
 	// If an error occurs the traversal is interrupted and the error returned.
 	WalkFolder(path string, keysC chan<- string) error
+	// Delete removes the folder path and all its contents.
+	Delete(key string) error
 }

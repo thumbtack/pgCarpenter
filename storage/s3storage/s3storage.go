@@ -215,7 +215,7 @@ func (s s3Storage) WalkFolder(path string, keysC chan<- string) error {
 		for _, obj := range result.Contents {
 			s.logger.Debug("Found object while traversing folder", zap.String("key", *obj.Key))
 			if *obj.Key == path {
-				s.logger.Debug("Skipping folder", zap.String("path", *obj.Key))
+				s.logger.Debug("Skipping parent folder", zap.String("path", *obj.Key))
 				continue
 			}
 			keysC <- *obj.Key
@@ -236,6 +236,17 @@ func (s s3Storage) WalkFolder(path string, keysC chan<- string) error {
 			return nil
 		}
 	}
+}
+
+func (s s3Storage) Delete(key string) error {
+	input := &s3.DeleteObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	}
+
+	_, err := s.client.DeleteObject(input)
+
+	return err
 }
 
 // return a map with generally useful metadata for Put/Upload operations
