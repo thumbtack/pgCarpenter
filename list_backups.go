@@ -41,7 +41,7 @@ func (a *app) listBackups() int {
 		}
 
 		// was this backup successfully completed?
-		_, err = a.storage.GetString(successfullyCompletedFolder + "/" + backupName)
+		_, err = a.storage.GetString(a.getSuccessfulMarker())
 		bkp.successful = err == nil
 
 		backups = append(backups, bkp)
