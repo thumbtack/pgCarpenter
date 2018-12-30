@@ -41,6 +41,8 @@ type app struct {
 	compressThreshold *int
 	// set on restore_backup.go
 	modifiedOnly *bool
+	// set on restore_wal.go
+	walFileName *string
 	// internal
 	storage storage.Storage
 	logger  *zap.Logger
@@ -124,13 +126,13 @@ func parseArgs(a *app) func() int {
 			Required: false,
 			Default:  false,
 			Help:     "Verbose output"})
-	// archive WAL + rstore WAL
+	// archive WAL + restore WAL
 	a.walPath = parser.String(
 		"",
 		"wal-path",
 		&argparse.Options{
 			Required: len(os.Args) > 1 && (os.Args[1] == "archive-wal" || os.Args[1] == "restore-wal"),
-			Help:     "Path to the WAL file"})
+			Help:     "Path to the WAL segment"})
 
 	// subcommands
 	listBackupsCmd := parser.NewCommand("list-backups", "List all available backups")
