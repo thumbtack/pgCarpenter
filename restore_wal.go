@@ -1,11 +1,12 @@
 package main
 
 import (
-	"github.com/marcoalmeida/pgCarpenter/util"
 	"io/ioutil"
+	"regexp"
 	"time"
 
 	"github.com/akamensky/argparse"
+	"github.com/marcoalmeida/pgCarpenter/util"
 	"go.uber.org/zap"
 )
 
@@ -23,6 +24,15 @@ func (a *app) restoreWAL() int {
 		a.logger.Error("Failed to get the full path to the WAL segment", zap.Error(err))
 		return 1
 	}
+
+	// ignore history files (matching [0-9].history):
+	// https://www.postgresql.org/docs/8.3/continuous-archiving.html (24.3.3)
+	match, err := regexp.MatchString(`[0-9]+\.history`, *a.walFileName)
+	if err == nil && match {
+		a.logger.Debug("Ignoring history file", zap.String("filename", *a.walFileName))
+		return 0
+	}
+
 	// object key (based on the file name, without the path, including the LZ4 extension)
 	key := a.getWALObjectKey(*a.walFileName)
 	// download to a temporary file
@@ -32,7 +42,12 @@ func (a *app) restoreWAL() int {
 	// get the contents of the (compressed) WAL segment to the temporary file
 	err = a.storage.Get(key, outTmp)
 	if err != nil {
-		a.logger.Error("Failed to download WAL segment", zap.Error(err), zap.String("filename", *a.walFileName))
+		// this may not be an error. it's possible for
+		a.logger.Info(
+			"Failed to download WAL segment. This may not be an error (e.g., WAL has not yet been archived)",
+			zap.Error(err),
+			zap.String("key", key),
+			zap.String("filename", *a.walFileName))
 		return 1
 	}
 	// close the file
