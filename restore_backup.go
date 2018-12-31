@@ -119,6 +119,21 @@ func (a *app) restoreWorker(restoreFilesC <-chan string, wg *sync.WaitGroup) {
 		// drop the backup name from the key to get the path relative to the data directory
 		file := strings.TrimPrefix(key, *a.backupName+"/")
 		dst := filepath.Join(*a.pgDataDirectory, file)
+		// if the object is a directory all we need to make sure is that it exists (any eventual
+		// content will be added at some point)
+		if util.IsObjectDirectory(dst) {
+			local := strings.TrimSuffix(dst, util.DirectoryExtension)
+			// create the directory iff it does not already exist
+			_, err := os.Stat(local)
+			if os.IsNotExist(err) {
+				if err := os.MkdirAll(local, os.ModePerm); err != nil {
+					a.logger.Error("Failed to create directory", zap.Error(err))
+				}
+			}
+			// regardless of whether or not the directory was successfully created, there's
+			// nothing else to do here
+			continue
+		}
 
 		// get the modify time stored in the object's metadata
 		mtime, err := a.storage.GetLastModifiedTime(key)
@@ -165,7 +180,7 @@ func (a *app) restoreWorker(restoreFilesC <-chan string, wg *sync.WaitGroup) {
 
 		// if the object we got is a compressed file, decompress it and remove the compressed one
 		localFile := out.Name()
-		if util.IsCompressed(key) {
+		if util.IsObjectCompressed(key) {
 			compressed := out.Name()
 			decompressed := strings.TrimSuffix(compressed, lz4.Extension)
 			localFile = decompressed

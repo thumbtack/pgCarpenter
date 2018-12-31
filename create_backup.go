@@ -281,14 +281,23 @@ func (a *app) backupWorker(filesC <-chan string, wg *sync.WaitGroup) {
 			continue
 		}
 
-		// skip directories
-		if st.IsDir() {
-			a.logger.Debug("Ignoring directory", zap.String("path", pgFile))
-			continue
-		}
-
 		// name the object after the file path relative to the data directory
 		key := filepath.Join(*a.backupName, pgFile)
+		// create directories
+		// some directories (e.g., pg_logical/mappings) need to exist even if empty otherwise
+		// PG, while fully functional, will continuously log an error message
+		if st.IsDir() {
+			// append the extension that identifies this object as a directory
+			key += util.DirectoryExtension
+			a.logger.Debug(
+				"Creating object for directory directory",
+				zap.String("path", pgFile),
+				zap.String("key", key))
+			if err := a.storage.PutString(key, ""); err != nil {
+				a.logger.Fatal("Failed to create object for directory on remote storage", zap.Error(err))
+			}
+			continue
+		}
 		// compress files larger than a given threshold
 		compressed := ""
 		if st.Size() > int64(*a.compressThreshold) {
@@ -303,7 +312,6 @@ func (a *app) backupWorker(filesC <-chan string, wg *sync.WaitGroup) {
 			}
 			// mark the object as a compressed file
 			key += lz4.Extension
-
 		}
 
 		if compressed != "" {

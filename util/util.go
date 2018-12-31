@@ -10,6 +10,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const DirectoryExtension = ".dir"
+
 // MustRemoveFile tries to delete the file path from the local file system. On error a message is logged.
 func MustRemoveFile(path string, logger *zap.Logger) {
 	logger.Debug("Removing file", zap.String("path", path))
@@ -19,9 +21,14 @@ func MustRemoveFile(path string, logger *zap.Logger) {
 	}
 }
 
-// IsCompressed returns true iff the file is compressed, i.e., .lz4 extension
-func IsCompressed(path string) bool {
+// IsObjectCompressed returns true iff path is of a compressed, i.e., contains a .lz4 extension
+func IsObjectCompressed(path string) bool {
 	return path[len(path)-len(lz4.Extension):] == lz4.Extension
+}
+
+// IsObjectDirectory returns true iff path is of a directory, i.e., contains a .dir extension
+func IsObjectDirectory(path string) bool {
+	return path[len(path)-len(DirectoryExtension):] == DirectoryExtension
 }
 
 // Compress compresses the file inPath using tmpDir fo storing the compressed output file and
