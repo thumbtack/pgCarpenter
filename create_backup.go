@@ -17,8 +17,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// there's no point on taking backups of directories like pg_xlog
-var prefixesNotToBackup = []string{"pg_xlog", "postmaster.pid", "pg_replslot"}
+// there's no point on taking backups of directories like log or pg_xlog
+var prefixesNotToBackup = []string{"log", "pg_xlog", "postmaster.pid", "pg_replslot"}
 
 func (a *app) createBackup() int {
 	a.logger.Info("Starting backup", zap.String("name", *a.backupName))
