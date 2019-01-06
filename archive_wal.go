@@ -34,11 +34,14 @@ func (a *app) archiveWAL() int {
 		return 1
 	}
 	// upload the compressed file
-	if err := a.storage.Put(key, compressedWal, 0); err != nil {
-		a.logger.Error("Failed to upload WAL segment", zap.Error(err))
-	}
-	// remove the compressed file
+	err = a.storage.Put(key, compressedWal, 0)
+	// regardless of whether or not the upload operation was successful, remove the compressed file
 	util.MustRemoveFile(compressedWal, a.logger)
+	// return non-zero on error
+	if err != nil {
+		a.logger.Error("Failed to upload WAL segment", zap.Error(err))
+		return 1
+	}
 
 	a.logger.Debug(
 		"Finished archiving WAL segment",
