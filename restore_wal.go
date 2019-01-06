@@ -42,8 +42,11 @@ func (a *app) restoreWAL() int {
 	// get the contents of the (compressed) WAL segment to the temporary file
 	err = a.storage.Get(key, outTmp)
 	if err != nil {
-		// this may not be an error. it's possible for
-		a.logger.Info(
+		// this may not be an error. it's possible (especially on low traffic environments) that it
+		// takes a while to gather the 16MB a full WAL segment contains and a file is requested a few
+		// times before it's ready
+		// there amy also be network slowdowns, etc.
+		a.logger.Debug(
 			"Failed to download WAL segment. This may not be an error (e.g., WAL has not yet been archived)",
 			zap.Error(err),
 			zap.String("key", key),
