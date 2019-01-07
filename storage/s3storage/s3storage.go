@@ -70,13 +70,18 @@ func (s s3Storage) Put(objectKey string, localPath string, mtime int64) error {
 		return err
 	}
 	// read the compressed file into a buffer
-	fileInfo, _ := file.Stat()
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return err
+	}
+
 	size := fileInfo.Size()
 	buffer := make([]byte, size)
 	_, err = file.Read(buffer)
 	if err != nil {
 		return err
 	}
+
 	// prepare the body of the upload
 	body := bytes.NewReader(buffer)
 
