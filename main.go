@@ -8,8 +8,8 @@ import (
 	"regexp"
 
 	"github.com/akamensky/argparse"
-	"github.com/marcoalmeida/pgCarpenter/storage"
-	"github.com/marcoalmeida/pgCarpenter/storage/s3storage"
+	"github.com/thumbtack/pgCarpenter/storage"
+	"github.com/thumbtack/pgCarpenter/storage/s3storage"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )

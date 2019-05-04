@@ -12,8 +12,8 @@ import (
 
 	"github.com/akamensky/argparse"
 	_ "github.com/lib/pq"
-	"github.com/marcoalmeida/pgCarpenter/util"
 	"github.com/pierrec/lz4"
+	"github.com/thumbtack/pgCarpenter/util"
 	"go.uber.org/zap"
 )
 

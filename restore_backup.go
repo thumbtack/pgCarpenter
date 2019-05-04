@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/akamensky/argparse"
-	"github.com/marcoalmeida/pgCarpenter/util"
 	"github.com/pierrec/lz4"
+	"github.com/thumbtack/pgCarpenter/util"
 	"go.uber.org/zap"
 )
 
