@@ -21,6 +21,9 @@ const (
 	backupNameRE                = "^[a-zA-Z0-9_-]+$"
 )
 
+var version string
+var gitCommit string
+
 type app struct {
 	// common
 	s3Region        *string
@@ -81,7 +84,7 @@ func parseArgs(a *app) func() int {
 		"",
 		"s3-bucket",
 		&argparse.Options{
-			Required: true,
+			Required: len(os.Args) > 1 && os.Args[1] != "version",
 			Help:     "S3 bucket where to push/fetch backups to/from"})
 	a.s3MaxRetries = parser.Int(
 		"",
@@ -147,6 +150,7 @@ func parseArgs(a *app) func() int {
 	parseRestoreWALArgs(a, restoreWALCmd)
 	deleteBackupCmd := parser.NewCommand("delete-backup", "Delete a base backup")
 	parseDeleteBackupArgs(a, deleteBackupCmd)
+	versionCmd := parser.NewCommand("version", "Print the version of pgCarpenter")
 
 	// parse input
 	err := parser.Parse(os.Args)
@@ -158,6 +162,10 @@ func parseArgs(a *app) func() int {
 		return func() int { return 1 }
 	}
 
+	if versionCmd.Happened() {
+		fmt.Printf("pgCarpenter version %s (git: %s)\n", version, gitCommit)
+		return func() int { return 0 }
+	}
 	if listBackupsCmd.Happened() {
 		return a.listBackups
 	}
