@@ -21,7 +21,7 @@ import (
 var prefixesNotToBackup = []string{"log", "pg_xlog", "postmaster.pid", "pg_replslot"}
 
 func (a *app) createBackup() int {
-	a.logger.Info("Starting backup", zap.String("name", *a.backupName))
+	a.logger.Info("Preparing to start backup", zap.String("name", *a.backupName))
 	begin := time.Now()
 
 	backupKey := *a.backupName + "/"
@@ -78,6 +78,7 @@ func (a *app) createBackup() int {
 }
 
 func (a *app) startBackup() (*sql.Conn, error) {
+	a.logger.Info("Starting backup", zap.String("name", *a.backupName))
 	d := time.Now().Add(time.Duration(*a.statementTimeout) * time.Second)
 	ctx, cancel := context.WithDeadline(context.Background(), d)
 	defer cancel()
@@ -105,7 +106,7 @@ func (a *app) startBackup() (*sql.Conn, error) {
 		return nil, err
 	}
 
-	// if doing an exclusive backup we don't need to keep the connection open
+	// if taking an exclusive backup we don't need to keep the connection open
 	if *a.backupExclusive {
 		err := db.Close()
 		if err != nil {
@@ -121,6 +122,7 @@ func (a *app) startBackup() (*sql.Conn, error) {
 }
 
 func (a *app) stopBackup(conn *sql.Conn) error {
+	a.logger.Info("Stopping backup", zap.Bool("exclusive", *a.backupExclusive))
 	d := time.Now().Add(time.Duration(*a.statementTimeout) * time.Second)
 	ctx, cancel := context.WithDeadline(context.Background(), d)
 	defer cancel()
@@ -199,6 +201,7 @@ func (a *app) updateLatest(backupName string) error {
 
 // upload the data directory to remote storage; return the number of files uploaded
 func (a *app) uploadFiles() int {
+	a.logger.Info("Preparing to upload files", zap.String("name", *a.backupName))
 	// channel to keep the path of all files that need to compressed and uploaded
 	filesC := make(chan string)
 
@@ -211,7 +214,7 @@ func (a *app) uploadFiles() int {
 	}
 
 	// traverse the data directory and put each file (relative path) in the channel for a worker to process
-	a.logger.Debug("Walking data directory", zap.String("path", *a.pgDataDirectory))
+	a.logger.Info("Traversing the data directory", zap.String("path", *a.pgDataDirectory))
 	items := 0
 	err := filepath.Walk(
 		*a.pgDataDirectory,
