@@ -39,7 +39,6 @@ type app struct {
 	pgUser            *string
 	pgPassword        *string
 	backupCheckpoint  *bool
-	backupExclusive   *bool
 	statementTimeout  *int
 	compressThreshold *int
 	// set on restore_backup.go

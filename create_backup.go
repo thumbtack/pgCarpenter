@@ -100,20 +100,10 @@ func (a *app) startBackup() (*sql.Conn, error) {
 		"SELECT pg_start_backup($1, $2, $3)",
 		*a.backupName,
 		*a.backupCheckpoint,
-		*a.backupExclusive,
+		"false",
 	)
 	if err != nil {
 		return nil, err
-	}
-
-	// if taking an exclusive backup we don't need to keep the connection open
-	if *a.backupExclusive {
-		err := db.Close()
-		if err != nil {
-			// it's an exclusive backup, we won't need the connection later on,
-			// there's no point on returning the error
-			a.logger.Error("Failed to close the DB connection", zap.Error(err))
-		}
 	}
 
 	// when doing a non-exclusive backup connection calling pg_start_backup must be maintained until the end of the
@@ -122,53 +112,53 @@ func (a *app) startBackup() (*sql.Conn, error) {
 }
 
 func (a *app) stopBackup(conn *sql.Conn) error {
-	a.logger.Info("Stopping backup", zap.Bool("exclusive", *a.backupExclusive))
-	d := time.Now().Add(time.Duration(*a.statementTimeout) * time.Second)
-	ctx, cancel := context.WithDeadline(context.Background(), d)
+	a.logger.Info("Stopping backup", zap.String("name", *a.backupName))
+	var lsn, labelFile, mapFile string
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// if doing an exclusive backup we'll need to create a new connection
-	if *a.backupExclusive {
-		connStr := fmt.Sprintf("user=%s password='%s'", *a.pgUser, *a.pgPassword)
-
-		db, err := sql.Open("postgres", connStr)
-		if err != nil {
-			return err
-		}
-
-		_, err = db.Query("SELECT pg_stop_backup()")
-		if err != nil {
-			return err
-		}
-	} else {
-		var lsn, labelFile, mapFile string
-
-		row := conn.QueryRowContext(ctx, "SELECT * FROM pg_stop_backup(false)")
-		err := row.Scan(&lsn, &labelFile, &mapFile)
-		if err != nil {
-			return err
-		}
-
-		// explicitly close the connection we kept open throughout the backup
-		err = conn.Close()
-		if err != nil {
-			a.logger.Error("Failed to close connection", zap.Error(err))
-		}
-
-		// upload the second field to a file named backup_label in the root directory of the backup and
-		// the third field to a file named tablespace_map, unless the field is empty
-		key := *a.backupName + "/backup_label"
-		err = a.storage.PutString(key, labelFile)
-		if err != nil {
-			return err
-		}
-
-		if mapFile != "" {
-			key = *a.backupName + "/tablespace_map"
-			err = a.storage.PutString(key, mapFile)
-			if err != nil {
-				return err
+	// print a short message to indicate we're just waiting for pg_stop_backup to complete
+	//
+	// pg_stop_backup will only succeed after all the necessary WAL has been
+	// archived, which may take a while
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				time.Sleep(60 * time.Second)
+				a.logger.Info("Waiting for pg_stop_backup")
 			}
+		}
+
+	}()
+
+	row := conn.QueryRowContext(ctx, "SELECT * FROM pg_stop_backup(false)")
+	err := row.Scan(&lsn, &labelFile, &mapFile)
+	if err != nil {
+		return err
+	}
+
+	// explicitly close the connection we kept open throughout the backup
+	err = conn.Close()
+	if err != nil {
+		a.logger.Error("Failed to close connection", zap.Error(err))
+	}
+
+	// upload the second field to a file named backup_label in the root directory of the backup and
+	// the third field to a file named tablespace_map, unless the field is empty
+	key := *a.backupName + "/backup_label"
+	err = a.storage.PutString(key, labelFile)
+	if err != nil {
+		return err
+	}
+
+	if mapFile != "" {
+		key = *a.backupName + "/tablespace_map"
+		err = a.storage.PutString(key, mapFile)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -360,13 +350,6 @@ func parseCreateBackupArgs(cfg *app, parser *argparse.Command) {
 			Required: false,
 			Default:  false,
 			Help:     "Start the backup as soon as possible by issuing an checkpoint"})
-	cfg.backupExclusive = parser.Flag(
-		"",
-		"exclusive",
-		&argparse.Options{
-			Required: false,
-			Default:  false,
-			Help:     "Disallow other concurrent backups (the backup can only be taken on a primary)"})
 	cfg.statementTimeout = parser.Int(
 		"",
 		"statement-timeout",
