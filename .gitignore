@@ -22,3 +22,6 @@
 
 # binaries
 pgCarpenter
+
+# log files
+*.log
