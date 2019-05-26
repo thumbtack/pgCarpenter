@@ -83,7 +83,7 @@ func (a *app) startBackup() (*sql.Conn, error) {
 	ctx, cancel := context.WithDeadline(context.Background(), d)
 	defer cancel()
 
-	connStr := fmt.Sprintf("user=%s password='%s'", *a.pgUser, *a.pgPassword)
+	connStr := fmt.Sprintf("user=%s password='%s' sslmode=%s", *a.pgUser, *a.pgPassword, *a.sslMode)
 
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
@@ -350,6 +350,14 @@ func parseCreateBackupArgs(cfg *app, parser *argparse.Command) {
 			Required: false,
 			Default:  false,
 			Help:     "Start the backup as soon as possible by issuing an checkpoint"})
+	cfg.sslMode = parser.Selector(
+		"",
+		"sslmode",
+		[]string{"disable", "allow", "prefer", "require", "verify-ca", "verify-full"},
+		&argparse.Options{
+			Required: false,
+			Default:  "disable",
+			Help:     "SSL certificate verification mode"})
 	cfg.statementTimeout = parser.Int(
 		"",
 		"statement-timeout",

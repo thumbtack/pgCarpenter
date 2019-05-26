@@ -38,6 +38,7 @@ type app struct {
 	// set on create_backup.go
 	pgUser            *string
 	pgPassword        *string
+	sslMode           *string
 	backupCheckpoint  *bool
 	statementTimeout  *int
 	compressThreshold *int
