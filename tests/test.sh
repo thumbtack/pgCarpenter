@@ -233,10 +233,12 @@ parse_args $@
 setup_environment
 
 # trying to cleanup the S3 bucket there's
-if [[ ${DELETE_ALL} ]]
+if [[ ${DELETE_ALL} -eq 1 ]]
 then
+    log "Deleting the contents of ${S3_BUCKET}"
     aws s3 rm --recursive s3://${S3_BUCKET}/${BACKUP_NAME}/
     aws s3 rm --recursive s3://${S3_BUCKET}/WAL/
+    log "Done"
     exit
 fi
 
