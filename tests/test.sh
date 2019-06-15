@@ -177,8 +177,25 @@ run_container() {
 stop_container() {
     log "Stopping Docker container ${CONTAINER_NAME}"
     docker stop --time 3 ${CONTAINER_NAME} > /dev/null
-    log 'Waiting for `docker logs` to terminate'
+    log 'Waiting for 'docker logs' to terminate'
     wait ${PG_LOGS_PID}
+}
+
+list_backups() {
+    expected_number=${1}
+    log "Listing backups"
+    docker exec ${CONTAINER_NAME} /${PGCARPENTER_BIN} list-backups \
+        --s3-bucket ${S3_BUCKET} > list_backups.log
+    n=$(wc -l list_backups.log | cut -f1 -d' ')
+    n=$((n - 1))
+    if [[ ${n} -ne ${expected_number} ]]
+    then
+        log "Error: expected ${expected_number} backups, found ${n}"
+    fi
+    if ! grep 'LATEST' list_backups.log > /dev/null
+    then
+        log 'No complete backups found'
+    fi
 }
 
 write_test_data_bg() {
@@ -256,7 +273,13 @@ confirm_test_data
 sleep 3
 stop_container
 
-# TODO: list and ensure a backup exists
+# list and ensure a backup exists and was successfully completed
+log "== list-backup =="
+# it's faster to launch a primary than a replica which restores a backup
+build_docker_image_primary
+run_container primary
+list_backups 1
+stop_container
 
 # restore the backup
 log "== restore-backup =="
@@ -265,7 +288,6 @@ run_container replica
 # wait for the base backup to be restored
 while [[ 1 ]]
 do
-
     if grep 'Backup successfully restored' ${PG_LOG} > /dev/null
     then
         break
@@ -295,6 +317,12 @@ run_container primary
 delete_backup
 stop_container
 
-# TODO: list and ensure the backup does not exist
+# list to make sure there are no backups
+log "== list-backup =="
+# it's faster to launch a primary than a replica which restores a backup
+build_docker_image_primary
+run_container primary
+list_backups 0
+stop_container
 
 grep -i -E 'error|fail|fatal' ${PG_LOG}
